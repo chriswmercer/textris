@@ -49,7 +49,7 @@ bool DoesPieceFit(int nTetromino, int nRotation, int nPosX, int nPosY)
 	    	{
 	    		if (nPosY + py >= 0 && nPosY + py < nFieldHeight)
 	    		{
-                    if (tetromino[nTetromino][pi] == L'X' && pField[fi] != 0) return false;
+                    if (tetromino[nTetromino][pi] != L'.' && pField[fi] != 0) return false;
 	    		}
 	    	}
 	    }
@@ -112,39 +112,113 @@ int main()
     SetConsoleActiveScreenBuffer(h_console);
     DWORD dwBytesWritten = 0;
 
+	
     auto bGameOver = false;
-
     auto nCurrentPiece = 0;
     auto nCurrentRotation = 0;
     auto nCurrentX = nFieldWidth / 2;
     auto nCurrentY = 0;
+    auto rotating = false;
 
+    auto nSpeed = 20;
+    auto nSpeedCounter = 0;
+    bool bForceDown = false;
+    int nPieceCount = 0;
+    int score = 0;
+
+    vector<int> vlines;
+	
     bool bKey[4];
 
     while (!bGameOver)
     {
         // timing
         this_thread::sleep_for(50ms);
+        nSpeedCounter++;
+        if(nSpeedCounter >= nSpeed)
+        {
+            bForceDown = true;
+            nSpeedCounter = 0;
+        }
+        else
+        {
+            bForceDown = false;
+        }
     	
     	//input
         for (auto k = 0; k < 4; k++) bKey[k] = (0x8000 & GetAsyncKeyState((unsigned char)("\x27\x25\x28Z"[k]))) != 0;
     	
     	//logic
-        if(bKey[1])
-        {
-	        if(DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX - 1, nCurrentY))
-	        {
-                nCurrentX--;
-	        }
+        nCurrentX += (bKey[0] && DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX + 1, nCurrentY)) ? 1 : 0;
+        nCurrentX -= (bKey[1] && DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX - 1, nCurrentY)) ? 1 : 0;
+        nCurrentY += (bKey[2] && DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX, nCurrentY + 1)) ? 1 : 0;
+
+		if(bKey[3])
+		{
+            nCurrentRotation += (!rotating && DoesPieceFit(nCurrentPiece, nCurrentRotation + 1, nCurrentX, nCurrentY)) ? 1 : 0;
+            rotating = true;
         }
-        if (bKey[0])
+        else 
         {
-            if (DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX + 1, nCurrentY))
+        	rotating = false;
+        }
+
+    	if (bForceDown)
+    	{
+            if (DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX, nCurrentY + 1))
             {
-                nCurrentX++;
+                nCurrentY++;
             }
-        }
-    	
+            else
+            {
+	            //stick in place
+            	for(auto px = 0; px < 4; px++)
+            	{
+            		for(auto py = 0; py < 4; py++)
+            		{
+            			if(tetromino[nCurrentPiece][Rotate(px, py, nCurrentRotation)] == L'X')
+            			{
+                            pField[(nCurrentY + py)* nFieldWidth + (nCurrentX + px)] = nCurrentPiece + 1;
+            			}
+            		}
+            	}
+
+                nPieceCount++;
+                if (nPieceCount % 10 == 0 && nSpeed >= 10) nSpeed--;
+
+            	// check lines
+                for (int py = 0; py < 4; py++)
+                {
+                    if (nCurrentY + py < nFieldHeight - 1)
+                    {
+                        bool bLine = true;
+                        for (int px = 1; px < nFieldWidth - 1; px++)
+                            bLine &= (pField[(nCurrentY + py) * nFieldWidth + px]) != 0;
+
+                        if (bLine)
+                        {
+                            // Remove Line, set to =
+                            for (int px = 1; px < nFieldWidth - 1; px++)
+                                pField[(nCurrentY + py) * nFieldWidth + px] = 8;
+                            vlines.push_back(nCurrentY + py);
+                        }
+                    }
+                }
+
+                score += 25;
+                if (!vlines.empty()) score += (1 << vlines.size()) * 100;
+            	
+            	// get next piece
+                nCurrentX = nFieldWidth / 2;
+                nCurrentY = 0;
+                nCurrentRotation = 0;
+                nCurrentPiece = rand() % 7;
+
+            	//if piece does not fit, game over!
+                bGameOver = !DoesPieceFit(nCurrentPiece, nCurrentRotation, nCurrentX, nCurrentY + 1);
+            }
+    	}
+        	
         // Draw Field
         for (auto x = 0; x < nFieldWidth; x++)
             for (auto y = 0; y < nFieldHeight; y++)
@@ -156,10 +230,34 @@ int main()
                 if (tetromino[nCurrentPiece][Rotate(px, py, nCurrentRotation)] != L'.')
                     screen[(nCurrentY + py + 2) * nScreenWidth + (nCurrentX + px + 2)] = nCurrentPiece + 65;
 
+        swprintf_s(&screen[2 * nScreenWidth + nFieldWidth + 6], 16, L"SCORE: %8d", score);
+    	
     	//display frame
+        if (!vlines.empty())
+        {
+            WriteConsoleOutputCharacter(h_console, screen, nScreenWidth * nScreenHeight, { 0, 0 }, &dwBytesWritten);
+            this_thread::sleep_for(400ms);
+
+        	for(auto &v : vlines)
+        	{
+        		for(auto px = 1; px < nFieldWidth - 1; px++)
+        		{
+        			for(auto py = v; py > 0; py--)
+        			{
+                        pField[py * nFieldWidth + px] = pField[(py - 1) * nFieldWidth + px];
+                        pField[px] = 0;
+        			}
+        		}
+        	}
+
+            vlines.clear();
+        }
+
         WriteConsoleOutputCharacter(h_console, screen, nScreenWidth * nScreenHeight, { 0, 0 }, &dwBytesWritten);
     }
 
-
+    CloseHandle(h_console);
+    cout << "Game over. Your score was: " << score << endl;
+    system("pause");
     return 0;
 }

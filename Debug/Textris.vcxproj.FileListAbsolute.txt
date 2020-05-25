@@ -1,0 +1,2 @@
+C:\Users\Chris\Dropbox\Work\Personal\Learning\CPP\textris\textris\Textris\Debug\Textris.exe
+C:\Users\Chris\Dropbox\Work\Personal\Learning\CPP\textris\textris\Textris\Debug\Textris.pdb
